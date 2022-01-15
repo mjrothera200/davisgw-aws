@@ -2,7 +2,17 @@
 # stop script on error
 set -e
 
+
+echo "Davis Gateway starting .... wait for all services to start"
+# Sleep for 5 miniutes before starting to give everything a chance to come up
+sleep 300
+echo "Davis Gateway now booting up."
+
+
+cd /home/pi/prod/davisgw-aws
+
 # Check to see if root CA file exists, download if not
+ 
 if [ ! -f ./root-CA.crt ]; then
   printf "\nDownloading AWS IoT Root CA certificate from AWS...\n"
   curl https://www.amazontrust.com/repository/AmazonRootCA1.pem > root-CA.crt
@@ -28,5 +38,10 @@ if ! python -c "import AWSIoTPythonSDK" &> /dev/null; then
 fi
 
 # run pub/sub sample app using certificates downloaded in package
-printf "\nRunning gatewat application...\n"
-python iot-temp.py -e a2dz4cozrsbfh4-ats.iot.us-east-1.amazonaws.com -r root-CA.crt -c mjrgw1.cert.pem -k mjrgw1.private.key
+printf "\nStarting gateway application...\n"
+while true 
+do
+python /home/pi/prod/davisgw-aws/davis-gw.py -e a2dz4cozrsbfh4-ats.iot.us-east-1.amazonaws.com -r root-CA.crt -c mjrgw1.cert.pem -k mjrgw1.private.key
+sleep 30
+echo "Restarting gateway application."
+done
