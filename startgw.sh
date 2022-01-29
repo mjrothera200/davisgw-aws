@@ -42,6 +42,7 @@ printf "\nStarting gateway application...\n"
 while true 
 do
 python /home/pi/prod/davisgw-aws/davis-gw.py -e a2dz4cozrsbfh4-ats.iot.us-east-1.amazonaws.com -r root-CA.crt -c mjrgw1.cert.pem -k mjrgw1.private.key
+echo "Restart detected.  Sleep."
 sleep 30
 echo "Restarting gateway application."
 done

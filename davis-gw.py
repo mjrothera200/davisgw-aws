@@ -17,6 +17,7 @@
 
 from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
 import logging
+import logging.handlers as handlers
 import time
 import argparse
 import json
@@ -25,6 +26,8 @@ import dht11
 import serial
 import datetime
 import threading
+import sys
+import os
 
 # Setup serial communication to the Feather
 ser = serial.Serial(
@@ -38,6 +41,9 @@ ser = serial.Serial(
 
 
 sensorvalues = { }
+rc = 0
+# Restart every 12 hours (15 minute send intervals)
+ri = 12*4
 
 AllowedActions = ['both', 'publish', 'subscribe']
 
@@ -97,12 +103,19 @@ if not args.useWebsocket and not args.port:  # When no port override for non-Web
     port = 8883
 
 # Configure logging
+
+seriallogger = logging.getLogger('davisgw')
+seriallogger.setLevel(logging.INFO)
+seriallogHandler = handlers.TimedRotatingFileHandler('/home/pi/logs/serial.log', when='h', backupCount=2,interval=1)
+seriallogHandler.setLevel(logging.INFO)
+seriallogger.addHandler(seriallogHandler)
+
+
+
 logger = logging.getLogger("AWSIoTPythonSDK.core")
 logger.setLevel(logging.DEBUG)
-streamHandler = logging.StreamHandler()
-#formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-#streamHandler.setFormatter(formatter)
-logger.addHandler(streamHandler)
+logHandler = handlers.TimedRotatingFileHandler('/home/pi/logs/iot.log', when='h', backupCount=24,interval=1)
+logger.addHandler(logHandler)
 
 # initialize GPIO
 GPIO.setwarnings(True)
@@ -123,6 +136,7 @@ except:
     cpuserial="ERROR000000000"
 
 print("CPU Serial # is %s" % (cpuserial))
+logger.info("CPU Serial # is %s" % (cpuserial))
 
 # Init AWSIoTMQTTClient
 myAWSIoTMQTTClient = None
@@ -150,20 +164,27 @@ time.sleep(2)
 
 message = { 'state': { 'reported': {} } }
 def sendSensorValues():
-    print datetime.datetime.now()
+    logger.info(datetime.datetime.now())
+    global rc,ri
+    rc = rc + 1
     for fieldname in sensorvalues:
-        print(fieldname+' ('+sensorvalues[fieldname]+')')
+        logger.info(fieldname+' ('+sensorvalues[fieldname]+')')
 	message['state']['reported'][fieldname] = sensorvalues[fieldname]
     messageJson = json.dumps(message)
-    print('Publishing topic %s: %s\n' % (topic, messageJson))
+    logger.info('Publishing topic %s: %s\n' % (topic, messageJson))
     myAWSIoTMQTTClient.publish(topic, messageJson, 1)
+    if rc > ri:
+	logger.info("forced restart")
+	print "forced restart"
+    	os._exit(os.EX_OK)
     threading.Timer(1*60*15, sendSensorValues).start()
 
-sendSensorValues()
+threading.Timer(1*60*15,sendSensorValues).start()
 
 # Publish to the same topic in a loop forever
 while 1:
         x=ser.readline()
+        seriallogger.info(x)
         if (x.startswith('raw')):
                 fields = x.split(',')
                 # Using for loop
