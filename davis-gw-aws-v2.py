@@ -70,6 +70,21 @@ def on_message_received(topic, payload, dup, qos, retain, **kwargs):
         received_all_event.set()
 
 if __name__ == '__main__':
+
+    # extract the serial number
+    cpuserial = "0000000000000000"
+    try:
+        f=open('/proc/cpuinfo', 'r')
+        for line in f:
+            if line[0:6]=='Serial':
+                cpuserial = line[10:26]
+        f.close()
+    except:
+        cpuserial="ERROR000000000"
+
+    print("CPU Serial # is %s" % (cpuserial))
+    logger.info("CPU Serial # is %s" % (cpuserial))
+
     mqtt_connection = cmdUtils.build_mqtt_connection(on_connection_interrupted, on_connection_resumed)
 
     if is_ci == False:
