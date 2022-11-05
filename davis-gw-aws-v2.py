@@ -1,12 +1,47 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0.
 
+import command_line_utils
 from awscrt import mqtt
 import sys
 import threading
 import time
 from uuid import uuid4
 import json
+import serial
+import datetime
+import sys
+import os
+import logging
+import logging.handlers as handlers
+
+
+# Setup serial communication to the Feather
+ser = serial.Serial(
+    port='/dev/ttyACM0',
+    baudrate=19200,
+    parity=serial.PARITY_NONE,
+    stopbits=serial.STOPBITS_ONE,
+    bytesize=serial.EIGHTBITS,
+    timeout=1
+)
+
+sensorvalues = {}
+
+# Configure logging
+
+seriallogger = logging.getLogger('davisgw')
+seriallogger.setLevel(logging.INFO)
+seriallogHandler = handlers.TimedRotatingFileHandler(
+    '/home/mrothera/logs/serial.log', when='h', backupCount=2, interval=1)
+seriallogHandler.setLevel(logging.INFO)
+seriallogger.addHandler(seriallogHandler)
+
+logger = logging.getLogger("AWSIoTPythonSDK.core")
+logger.setLevel(logging.DEBUG)
+logHandler = handlers.TimedRotatingFileHandler(
+    '/home/mrothera/logs/iot.log', when='h', backupCount=24, interval=1)
+logger.addHandler(logHandler)
 
 # This sample uses the Message Broker for AWS IoT to send and receive messages
 # through an MQTT connection. On startup, the device connects to the server,
@@ -15,18 +50,24 @@ import json
 # since it is subscribed to that same topic.
 
 # Parse arguments
-import command_line_utils;
-cmdUtils = command_line_utils.CommandLineUtils("PubSub - Send and recieve messages through an MQTT connection.")
+cmdUtils = command_line_utils.CommandLineUtils(
+    "PubSub - Send and recieve messages through an MQTT connection.")
 cmdUtils.add_common_mqtt_commands()
 cmdUtils.add_common_topic_message_commands()
 cmdUtils.add_common_proxy_commands()
 cmdUtils.add_common_logging_commands()
-cmdUtils.register_command("key", "<path>", "Path to your key in PEM format.", True, str)
-cmdUtils.register_command("cert", "<path>", "Path to your client certificate in PEM format.", True, str)
-cmdUtils.register_command("port", "<int>", "Connection port. AWS IoT supports 443 and 8883 (optional, default=auto).", type=int)
-cmdUtils.register_command("client_id", "<str>", "Client ID to use for MQTT connection (optional, default='test-*').", default="test-" + str(uuid4()))
-cmdUtils.register_command("count", "<int>", "The number of messages to send (optional, default='10').", default=10, type=int)
-cmdUtils.register_command("is_ci", "<str>", "If present the sample will run in CI mode (optional, default='None')")
+cmdUtils.register_command(
+    "key", "<path>", "Path to your key in PEM format.", True, str)
+cmdUtils.register_command(
+    "cert", "<path>", "Path to your client certificate in PEM format.", True, str)
+cmdUtils.register_command(
+    "port", "<int>", "Connection port. AWS IoT supports 443 and 8883 (optional, default=auto).", type=int)
+cmdUtils.register_command(
+    "client_id", "<str>", "Client ID to use for MQTT connection (optional, default='test-*').", default="test-" + str(uuid4()))
+cmdUtils.register_command(
+    "count", "<int>", "The number of messages to send (optional, default='10').", default=10, type=int)
+cmdUtils.register_command(
+    "is_ci", "<str>", "If present the sample will run in CI mode (optional, default='None')")
 # Needs to be called so the command utils parse the commands
 cmdUtils.get_args()
 
@@ -35,13 +76,16 @@ received_all_event = threading.Event()
 is_ci = cmdUtils.get_command("is_ci", None) != None
 
 # Callback when connection is accidentally lost.
+
+
 def on_connection_interrupted(connection, error, **kwargs):
     print("Connection interrupted. error: {}".format(error))
 
 
 # Callback when an interrupted connection is re-established.
 def on_connection_resumed(connection, return_code, session_present, **kwargs):
-    print("Connection resumed. return_code: {} session_present: {}".format(return_code, session_present))
+    print("Connection resumed. return_code: {} session_present: {}".format(
+        return_code, session_present))
 
     if return_code == mqtt.ConnectReturnCode.ACCEPTED and not session_present:
         print("Session did not persist. Resubscribing to existing topics...")
@@ -53,12 +97,12 @@ def on_connection_resumed(connection, return_code, session_present, **kwargs):
 
 
 def on_resubscribe_complete(resubscribe_future):
-        resubscribe_results = resubscribe_future.result()
-        print("Resubscribe results: {}".format(resubscribe_results))
+    resubscribe_results = resubscribe_future.result()
+    print("Resubscribe results: {}".format(resubscribe_results))
 
-        for topic, qos in resubscribe_results['topics']:
-            if qos is None:
-                sys.exit("Server rejected resubscribe to topic: {}".format(topic))
+    for topic, qos in resubscribe_results['topics']:
+        if qos is None:
+            sys.exit("Server rejected resubscribe to topic: {}".format(topic))
 
 
 # Callback when the subscribed topic receives a message
@@ -69,23 +113,33 @@ def on_message_received(topic, payload, dup, qos, retain, **kwargs):
     if received_count == cmdUtils.get_command("count"):
         received_all_event.set()
 
+def sendSensorValues():
+    logger.info(datetime.datetime.now())
+    for fieldname in sensorvalues:
+        logger.info(fieldname+' ('+sensorvalues[fieldname]+')')
+	message['state']['reported'][fieldname] = sensorvalues[fieldname]
+    messageJson = json.dumps(message)
+    logger.info('Publishing topic %s: %s\n' % (topic, messageJson))
+    myAWSIoTMQTTClient.publish(topic, messageJson, 1)
+    threading.Timer(1*60*15, sendSensorValues).start()
+
 if __name__ == '__main__':
 
     # extract the serial number
     cpuserial = "0000000000000000"
     try:
-        f=open('/proc/cpuinfo', 'r')
+        f = open('/proc/cpuinfo', 'r')
         for line in f:
-            if line[0:6]=='Serial':
+            if line[0:6] == 'Serial':
                 cpuserial = line[10:26]
         f.close()
     except:
-        cpuserial="ERROR000000000"
+        cpuserial = "ERROR000000000"
 
     print("CPU Serial # is %s" % (cpuserial))
-    logger.info("CPU Serial # is %s" % (cpuserial))
 
-    mqtt_connection = cmdUtils.build_mqtt_connection(on_connection_interrupted, on_connection_resumed)
+    mqtt_connection = cmdUtils.build_mqtt_connection(
+        on_connection_interrupted, on_connection_resumed)
 
     if is_ci == False:
         print("Connecting to {} with client ID '{}'...".format(
@@ -102,47 +156,70 @@ if __name__ == '__main__':
     message_topic = cmdUtils.get_command(cmdUtils.m_cmd_topic)
     message_string = cmdUtils.get_command(cmdUtils.m_cmd_message)
 
-    # Subscribe
-    print("Subscribing to topic '{}'...".format(message_topic))
-    subscribe_future, packet_id = mqtt_connection.subscribe(
-        topic=message_topic,
-        qos=mqtt.QoS.AT_LEAST_ONCE,
-        callback=on_message_received)
+    if message_topic == "verify":
 
-    subscribe_result = subscribe_future.result()
-    print("Subscribed with {}".format(str(subscribe_result['qos'])))
+        # Subscribe
+        print("Subscribing to topic '{}'...".format(message_topic))
+        subscribe_future, packet_id = mqtt_connection.subscribe(
+            topic=message_topic,
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_message_received)
 
-    # Publish message to server desired number of times.
-    # This step is skipped if message is blank.
-    # This step loops forever if count was set to 0.
-    if message_string:
-        if message_count == 0:
-            print ("Sending messages until program killed")
-        else:
-            print ("Sending {} message(s)".format(message_count))
+        subscribe_result = subscribe_future.result()
+        print("Subscribed with {}".format(str(subscribe_result['qos'])))
 
-        publish_count = 1
-        while (publish_count <= message_count) or (message_count == 0):
-            message = "{} [{}]".format(message_string, publish_count)
-            print("Publishing message to topic '{}': {}".format(message_topic, message))
-            message_json = json.dumps(message)
-            mqtt_connection.publish(
-                topic=message_topic,
-                payload=message_json,
-                qos=mqtt.QoS.AT_LEAST_ONCE)
-            time.sleep(1)
-            publish_count += 1
+        # Publish message to server desired number of times.
+        # This step is skipped if message is blank.
+        # This step loops forever if count was set to 0.
+        if message_string:
+            if message_count == 0:
+                print("Sending messages until program killed")
+            else:
+                print("Sending {} message(s)".format(message_count))
 
-    # Wait for all messages to be received.
-    # This waits forever if count was set to 0.
-    if message_count != 0 and not received_all_event.is_set():
-        print("Waiting for all messages to be received...")
+            publish_count = 1
+            while (publish_count <= message_count) or (message_count == 0):
+                message = "{} [{}]".format(message_string, publish_count)
+                print("Publishing message to topic '{}': {}".format(
+                    message_topic, message))
+                message_json = json.dumps(message)
+                mqtt_connection.publish(
+                    topic=message_topic,
+                    payload=message_json,
+                    qos=mqtt.QoS.AT_LEAST_ONCE)
+                time.sleep(1)
+                publish_count += 1
 
-    received_all_event.wait()
-    print("{} message(s) received.".format(received_count))
+        # Wait for all messages to be received.
+        # This waits forever if count was set to 0.
+        if message_count != 0 and not received_all_event.is_set():
+            print("Waiting for all messages to be received...")
 
-    # Disconnect
-    print("Disconnecting...")
-    disconnect_future = mqtt_connection.disconnect()
-    disconnect_future.result()
-    print("Disconnected!")
+        received_all_event.wait()
+        print("{} message(s) received.".format(received_count))
+
+        # Disconnect
+        print("Disconnecting...")
+        disconnect_future = mqtt_connection.disconnect()
+        disconnect_future.result()
+        print("Disconnected!")
+
+    elif:
+        print("invoking gateway logic")
+        message = { 'state': { 'reported': {} } }
+
+        threading.Timer(1*60*15,sendSensorValues).start()
+
+        # Publish to the same topic in a loop forever
+        while 1:
+                x=ser.readline()
+                seriallogger.info(x)
+                if (x.startswith('raw')):
+                        fields = x.split(',')
+                        # Using for loop
+                        for i in fields:
+                                field = i.split(':')
+                                fieldname = field[0].strip()
+                                fieldvalue = field[1].strip()
+                                # print(fieldname+' ('+fieldvalue+')')
+                                sensorvalues[fieldname] = fieldvalue
