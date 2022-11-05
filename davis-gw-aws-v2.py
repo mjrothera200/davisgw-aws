@@ -27,6 +27,8 @@ ser = serial.Serial(
 )
 
 sensorvalues = {}
+publish_timer = 1*60*15 
+#publish_timer = 5
 
 # Configure logging
 
@@ -75,6 +77,7 @@ received_count = 0
 received_all_event = threading.Event()
 is_ci = cmdUtils.get_command("is_ci", None) != None
 
+
 # Callback when connection is accidentally lost.
 
 
@@ -113,15 +116,24 @@ def on_message_received(topic, payload, dup, qos, retain, **kwargs):
     if received_count == cmdUtils.get_command("count"):
         received_all_event.set()
 
+mqtt_connection = cmdUtils.build_mqtt_connection(
+        on_connection_interrupted, on_connection_resumed)
+
 def sendSensorValues():
+    print("publishing....")
     logger.info(datetime.datetime.now())
+    topic = "$aws/things/mjrgw1/shadow/update"
     for fieldname in sensorvalues:
         logger.info(fieldname+' ('+sensorvalues[fieldname]+')')
-	message['state']['reported'][fieldname] = sensorvalues[fieldname]
+        message['state']['reported'][fieldname] = sensorvalues[fieldname]
     messageJson = json.dumps(message)
-    logger.info('Publishing topic %s: %s\n' % (topic, messageJson))
-    myAWSIoTMQTTClient.publish(topic, messageJson, 1)
-    threading.Timer(1*60*15, sendSensorValues).start()
+    print('Publishing topic %s: %s\n' % (topic, messageJson))
+    mqtt_connection.publish(topic, messageJson, 1)
+    mqtt_connection.publish(
+        topic=topic,
+        payload=messageJson,
+        qos=mqtt.QoS.AT_LEAST_ONCE)
+    threading.Timer(publish_timer, sendSensorValues).start()
 
 if __name__ == '__main__':
 
@@ -138,8 +150,6 @@ if __name__ == '__main__':
 
     print("CPU Serial # is %s" % (cpuserial))
 
-    mqtt_connection = cmdUtils.build_mqtt_connection(
-        on_connection_interrupted, on_connection_resumed)
 
     if is_ci == False:
         print("Connecting to {} with client ID '{}'...".format(
@@ -204,15 +214,37 @@ if __name__ == '__main__':
         disconnect_future.result()
         print("Disconnected!")
 
-    elif:
+    else:
         print("invoking gateway logic")
         message = { 'state': { 'reported': {} } }
 
-        threading.Timer(1*60*15,sendSensorValues).start()
+        accepted_topic = "$aws/things/mjrgw1/shadow/update/accepted"
+        # Subscribe
+        print("Subscribing to topic '{}'...".format(accepted_topic))
+        subscribe_future, packet_id = mqtt_connection.subscribe(
+            topic=accepted_topic,
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_message_received)
+
+        subscribe_result = subscribe_future.result()
+        print("Subscribed with {}".format(str(subscribe_result['qos'])))
+
+        rejected_topic = "$aws/things/mjrgw1/shadow/update/rejected"
+        # Subscribe
+        print("Subscribing to topic '{}'...".format(rejected_topic))
+        subscribe_future_rejected, packet_id = mqtt_connection.subscribe(
+            topic=rejected_topic,
+            qos=mqtt.QoS.AT_LEAST_ONCE,
+            callback=on_message_received)
+
+        subscribe_result_rejected = subscribe_future.result()
+        print("Subscribed with {}".format(str(subscribe_result_rejected['qos'])))
+
+        threading.Timer(publish_timer,sendSensorValues).start()
 
         # Publish to the same topic in a loop forever
         while 1:
-                x=ser.readline()
+                x=ser.readline().decode("ascii")
                 seriallogger.info(x)
                 if (x.startswith('raw')):
                         fields = x.split(',')

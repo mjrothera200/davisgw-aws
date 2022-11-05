@@ -22,7 +22,8 @@ fi
 printf "\nStarting gateway application...\n"
 while true 
 do
-python /home/mrothera/prod/davisgw-aws/davis-gw-aws-v2.py --client_id mjrgw1 --topic verify --endpoint a2dz4cozrsbfh4-ats.iot.us-east-1.amazonaws.com --ca_file root-CA.crt --cert mjrgw1-certificate.pem.crt --key mjrgw1-private.pem.key
+# Note:  Set the topic to verify to run in test mode to publish to the verify topic
+python /home/mrothera/prod/davisgw-aws/davis-gw-aws-v2.py --client_id mjrgw1 --topic "$aws/things/mjrgw1/shadow/update" --endpoint a2dz4cozrsbfh4-ats.iot.us-east-1.amazonaws.com --ca_file root-CA.crt --cert mjrgw1-certificate.pem.crt --key mjrgw1-private.pem.key
 echo "Restart detected.  Sleep."
 sleep 30
 echo "Restarting gateway application."
