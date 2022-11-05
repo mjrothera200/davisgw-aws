@@ -28,23 +28,23 @@ rc = 0
 
 seriallogger = logging.getLogger('monitor-serial')
 seriallogger.setLevel(logging.INFO)
-seriallogHandler = handlers.TimedRotatingFileHandler('/home/pi/logs/monitor-serial.log', when='h', backupCount=2,interval=1)
+seriallogHandler = handlers.TimedRotatingFileHandler('/home/mrothera/logs/monitor-serial.log', when='h', backupCount=2,interval=1)
 seriallogHandler.setLevel(logging.INFO)
 seriallogger.addHandler(seriallogHandler)
 
 
 # Publish to the same topic in a loop forever
 while 1:
-        x=ser.readline()
-        seriallogger.info(x)
+	x=ser.readline().decode("ascii")
+	seriallogger.info(x)
 	print(x)
-        if (x.startswith('raw')):
-                fields = x.split(',')
-                # Using for loop
-                for i in fields:
-                        field = i.split(':')
-                        fieldname = field[0].strip()
-                        fieldvalue = field[1].strip()
-                        # print(fieldname+' ('+fieldvalue+')')
-                        sensorvalues[fieldname] = fieldvalue
+	if (x.startswith('raw')):
+		fields = x.split(',')
+		# Using for loop
+		for i in fields:
+			field = i.split(':')
+			fieldname = field[0].strip()
+			fieldvalue = field[1].strip()
+			print(fieldname+' ('+fieldvalue+')')
+			sensorvalues[fieldname] = fieldvalue
 
