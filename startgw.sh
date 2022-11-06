@@ -5,7 +5,7 @@ set -e
 
 echo "Davis Gateway starting .... wait for all services to start"
 # Sleep for 5 miniutes before starting to give everything a chance to come up
-sleep 3
+sleep 300 
 echo "Davis Gateway now booting up."
 
 
